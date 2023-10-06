@@ -1,0 +1,411 @@
+import 'package:absen/components/admin/admin.dart';
+import 'package:absen/services/shared_preference.dart';
+import 'package:intl/intl.dart';
+import 'package:absen/components/user/user.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:absen/services/api_service.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class AuthPage extends StatefulWidget {
+  const AuthPage({Key? key}) : super(key: key);
+
+  @override
+  State<AuthPage> createState() => _AuthPageState();
+}
+
+class _AuthPageState extends State<AuthPage> {
+  bool isLoading = false;
+
+  late String username;
+  late String password;
+  late int is_admin;
+
+  final _formState = GlobalKey<FormState>();
+
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  
+  get userId => '';
+
+  @override
+  void initState() {
+    super.initState();
+    initializeDateFormatting('id_ID', null);
+    requestLocationPermission();
+    _initAsync();
+  }
+
+  Future<void> _initAsync() async {
+    await SharedPreferencesHelper.init();
+    _checkLoggedInStatus();
+  }
+
+  Future<void> requestLocationPermission() async {
+    final status = await Permission.location.request();
+    if (status.isGranted) {
+    } else if (status.isDenied) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: Text('Location Permission Denied'),
+          content: Text(
+              'Please grant location permission in settings to use this feature.'),
+          actions: <Widget>[
+            TextButton(
+              child: Text('OK'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        ),
+      );
+    } else if (status.isPermanentlyDenied) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: Text('Location Permission Denied'),
+          content: Text(
+              'To use this feature, please enable location permission in app settings.'),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Open Settings'),
+              onPressed: () {
+                openAppSettings();
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _checkLoggedInStatus() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    if (isLoggedIn) {
+      String savedUsername = prefs.getString('username') ?? '';
+      int savedIsAdmin = prefs.getInt('isAdmin') ?? 0;
+      int savedId = prefs.getInt(savedUsername) ?? 0 ;
+      if (savedIsAdmin == 1) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => Admin(username: savedUsername),
+          ),
+        );
+      } else if (savedIsAdmin == 0) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => User(username: savedUsername, userId: savedId),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _login() async {
+    setState(() {
+      isLoading = true;
+    });
+  
+    final String username = _usernameController.text;
+    final String password = _passwordController.text;
+
+    try {
+      final responseData = await ApiService.login(username, password);
+      is_admin = responseData['is_admin'];
+      final userId = responseData['id'];
+      if (is_admin == 1) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => Admin(username: username),
+          ),
+        );
+      } else if (is_admin == 0) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => User(username: username, userId: userId,),
+          ),
+        );
+      }
+
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      prefs.setBool('isLoggedIn', true);
+      prefs.setString('username', username);
+      prefs.setInt('isAdmin', is_admin);
+      prefs.setInt(username, userId);
+    } catch (e) {
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: Text('Login Error'),
+            content: Text(e.toString()),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: Text('OK'),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  bool _obscureText = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final String formattedDate =
+        DateFormat('EEEE, dd MMMM y', 'id_ID').format(DateTime.now());
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Color.fromARGB(255, 241, 240, 241),
+                  Color.fromARGB(255, 87, 178, 235),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 30, vertical: 50),
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 5,
+                  ),
+                  Container(
+                    alignment: Alignment.center,
+                    child: Image.asset(
+                      'assets/logo1.png',
+                    ),
+                  ),
+                  SizedBox(height: 5),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.all(Radius.circular(10)),
+                      color: Color.fromARGB(100, 243, 243, 245),
+                    ),
+                    child: Form(
+                      key: _formState,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Login',
+                            style: TextStyle(
+                              fontSize: 25,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(
+                            height: 5,
+                          ),
+                          Text(
+                            formattedDate,
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: Colors.redAccent,
+                              // fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 4.0),
+                            child: Column(
+                              children: [
+                                TextFormField(
+                                  textInputAction: TextInputAction.done,
+                                  obscureText: false,
+                                  controller: _usernameController,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      username = value;
+                                    });
+                                  },
+                                  style: TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    enabledBorder: const OutlineInputBorder(
+                                        borderSide:
+                                            BorderSide(color: Colors.white)),
+                                    icon: new Icon(Icons.person,
+                                        color: Colors.white),
+                                    border: InputBorder.none,
+                                    hintText: 'Username',
+                                    hintStyle: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 4.0),
+                            child: Column(
+                              children: [
+                                TextField(
+                                  textInputAction:
+                                      TextInputAction.done,                                  
+                                  keyboardType: TextInputType.text,
+                                  controller: _passwordController,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      password = value;
+                                    });
+                                  },
+                                  style: TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    enabledBorder: const OutlineInputBorder(
+                                        borderSide:
+                                            BorderSide(color: Colors.white)),
+                                    icon: new Icon(Icons.lock,
+                                        color: Colors.white),
+                                    border: InputBorder.none,
+                                    hintText: 'Password',
+                                    hintStyle: TextStyle(color: Colors.white),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscureText
+                                            ? Icons.visibility_off
+                                            : Icons.visibility,
+                                        color: Colors.white,
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _obscureText = !_obscureText;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  obscureText: _obscureText,
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              InkWell(
+                                onTap: _login,
+                                child: Container(
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.3,
+                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    borderRadius:
+                                        BorderRadius.all(Radius.circular(5)),
+                                    boxShadow: <BoxShadow>[
+                                      BoxShadow(
+                                        color: Colors.blue,
+                                        offset: Offset(1, 2),
+                                        spreadRadius: 3,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        'Login',
+                                        style: TextStyle(
+                                            fontSize: 20, color: Colors.white),
+                                      ),
+                                      SizedBox(width: 5),
+                                      Icon(
+                                        Icons.arrow_forward,
+                                        color: Colors.white,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 10),
+                          RichText(
+                            text: TextSpan(
+                              children: <InlineSpan>[
+                                TextSpan(
+                                  text: 'HMS ',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                WidgetSpan(
+                                  child: Icon(
+                                    Icons.copyright,
+                                    size: 17,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text:
+                                      ' ${DateFormat('y').format(DateTime.now())} SKI-DIY Abiyosoft',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          Text(
+                            'H A K I',
+                            style: TextStyle(
+                              fontSize: 25,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          isLoading
+              ? Center(
+                  child: CircularProgressIndicator(),
+                )
+              : SizedBox(),
+        ],
+      ),
+    );
+  }
+}
